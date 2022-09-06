@@ -1,5 +1,8 @@
+import fontforge
+
 greek = {
     "type": "macro",
+    "font": "Latin Modern",
     "macros": {
         "alpha": "α",
         "beta": "β",
@@ -82,9 +85,23 @@ mathbb = {
     }
 }
 
+map_arrows = {
+    "type": "macro",
+    "macros": {
+        "to": "⟶",
+        "mapsto": "⟼"
+    }
+}
+
+fonts = {
+    "Latin Modern": "latinmodern-math.otf",
+    "FiraCode": "FiraCode-Regular.ttf"
+}
+
 ligatures = [
     greek,
     operators,
     misc,
-    mathbb
+    mathbb,
+    map_arrows
 ]
