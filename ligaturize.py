@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
+from sre_constants import LITERAL
 import fontforge
 import os
+from ligatures import ligatures
 
 # Constants
 SOURCE_FONT_DIR = "input-fonts"
@@ -60,217 +62,283 @@ def split_camel_case(str):
     return acc
 
 config = {
-    'firacode_ttf': 'FiraCode-Regular.otf',
-
-    'add_ligatures': [
-        {   # <-
-            'chars': ['less', 'hyphen'],
-            'firacode_ligature_name': 'less_hyphen.liga',
-        },
-        {   # <--
-            'chars': ['less', 'hyphen', 'hyphen'],
-            'firacode_ligature_name': 'less_hyphen_hyphen.liga',
-        },
-        {   # ->
-            'chars': ['hyphen', 'greater'],
-            'firacode_ligature_name': 'hyphen_greater.liga',
-        },
-        {   # -->
-            'chars': ['hyphen', 'hyphen', 'greater'],
-            'firacode_ligature_name': 'hyphen_hyphen_greater.liga',
-        },
-        {   # <>
-            'chars': ['less', 'greater'],
-            'firacode_ligature_name': 'less_greater.liga',
-        },
-        {   # <->
-            'chars': ['less', 'hyphen', 'greater'],
-            'firacode_ligature_name': 'less_hyphen_greater.liga',
-        },
-        {   # =>
-            'chars': ['equal', 'greater'],
-            'firacode_ligature_name': 'equal_greater.liga',
-        },
-        {   # ==>
-            'chars': ['equal', 'equal', 'greater'],
-            'firacode_ligature_name': 'equal_equal_greater.liga',
-        },
-        {   # <==
-            'chars': ['less', 'equal', 'equal'],
-            'firacode_ligature_name': 'less_equal_equal.liga',
-        },
-        {   # ?=
-            'chars': ['question', 'equal'],
-            'firacode_ligature_name': 'question_equal.liga',
-        },
-        {   # !=
-            'chars': ['exclam', 'equal'],
-            'firacode_ligature_name': 'exclam_equal.liga',
-        },
-        {   # ==
-            'chars': ['equal', 'equal'],
-            'firacode_ligature_name': 'equal_equal.liga',
-        },
-        {   # <=
-            'chars': ['less', 'equal'],
-            'firacode_ligature_name': 'equal_less.liga',
-        },
-        {   # >=
-            'chars': ['greater', 'equal'],
-            'firacode_ligature_name': 'greater_equal.liga',
-        },
-        {   # ::
-            'chars': ['colon', 'colon'],
-            'firacode_ligature_name': 'colon_colon.liga',
-        },
-        {   # ===
-            'chars': ['equal', 'equal', 'equal'],
-            'firacode_ligature_name': 'equal_equal_equal.liga',
-        },
-        {   # !==
-            'chars': ['exclam', 'equal', 'equal'],
-            'firacode_ligature_name': 'exclam_equal_equal.liga',
-        },
-        {   # ??
-            'chars': ['question', 'question'],
-            'firacode_ligature_name': 'question_question.liga',
-        },
-        {   # !!
-            'chars': ['exclam', 'exclam'],
-            'firacode_ligature_name': 'exclam_exclam.liga',
-        },
-        {   # --
-            'chars': ['hyphen', 'hyphen'],
-            'firacode_ligature_name': 'hyphen_hyphen.liga',
-        },
-        {   # ---
-            'chars': ['hyphen', 'hyphen', 'hyphen'],
-            'firacode_ligature_name': 'hyphen_hyphen_hyphen.liga',
-        },
-        {   # /*
-            'chars': ['slash', 'asterisk'],
-            'firacode_ligature_name': 'slash_asterisk.liga',
-        },
-        {   # /**
-            'chars': ['slash', 'asterisk', 'asterisk'],
-            'firacode_ligature_name': 'slash_asterisk_asterisk.liga',
-        },
-        {   # */
-            'chars': ['asterisk', 'slash'],
-            'firacode_ligature_name': 'asterisk_slash.liga',
-        },
-        {   # //
-            'chars': ['slash', 'slash'],
-            'firacode_ligature_name': 'slash_slash.liga',
-        },
-        {   # ///
-            'chars': ['slash', 'slash', 'slash'],
-            'firacode_ligature_name': 'slash_slash_slash.liga',
-        },
-        {   # ||
-            'chars': ['bar', 'bar'],
-            'firacode_ligature_name': 'bar_bar.liga',
-        },
-        {   # ||=
-            'chars': ['bar', 'bar', 'equal'],
-            'firacode_ligature_name': 'bar_bar_equal.liga',
-        },
-        {   # |=
-            'chars': ['bar', 'equal'],
-            'firacode_ligature_name': 'bar_equal.liga',
-        },
-        {   # ^=
-            'chars': ['asciicircum', 'equal'],
-            'firacode_ligature_name': 'asciicircum_equal.liga',
-        },
-        {   # ~=
-            'chars': ['asciitilde', 'equal'],
-            'firacode_ligature_name': 'asciitilde_equal.liga',
-        },
-        {   # =~
-            'chars': ['equal', 'asciitilde'],
-            'firacode_ligature_name': 'equal_asciitilde.liga',
-        },
-        {   # ~>
-            'chars': ['asciitilde', 'greater'],
-            'firacode_ligature_name': 'asciitilde_greater.liga',
-        },
-        {   # ~~>
-            'chars': ['asciitilde', 'asciitilde', 'greater'],
-            'firacode_ligature_name': 'asciitilde_asciitilde_greater.liga',
-        },
-        {   # <<
-            'chars': ['less', 'less'],
-            'firacode_ligature_name': 'less_less.liga',
-        },
-        {   # >>
-            'chars': ['greater', 'greater'],
-            'firacode_ligature_name': 'greater_greater.liga',
-        },
-        {   # <!--
-            'chars': ['less', 'exclam', 'hyphen', 'hyphen'],
-            'firacode_ligature_name': 'less_exclam_hyphen_hyphen.liga',
-        }
-    ]
+    'firacode_ttf': 'FiraCode-Regular.ttf',
 }
 
-class LigatureCreator(object):
+def name_from_codepoint(font, unicode_str):
+    unicode = ord(unicode_str)
+    alt_match = None
+    for glyph_name in font:
+        glyph = font[glyph_name]
+        if glyph.unicode == unicode:
+            return glyph_name
+        if(glyph.altuni is not None):
+            for alt in glyph.altuni:
+                if(alt[0] == unicode):
+                    alt_match = glyph_name
+    return alt_match
 
-    def __init__(self, font, firacode):
+def find_unicode_glyph(font, unicode_char):
+    """ takes Single character string """
+    unicode = ord(unicode_char)
+    alt_match = None
+    for glyph_name in font:
+        glyph = font[glyph_name]
+        if glyph.unicode == unicode:
+            return glyph_name
+        if(glyph.altuni is not None):
+            for alt in glyph.altuni:
+                if(alt[0] == unicode):
+                    alt_match = glyph_name
+    return alt_match
+
+LETTERS = tuple('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
+
+class LaTeXLigatureCreator:
+    """
+    Macros have to be registered with decreasing length. This prevents macros from being overly long.
+    """
+
+    def __init__(self, font, ligature_fonts=[]):
         self.font = font
-        self.firacode = firacode
+        self.ligature_fonts=ligature_fonts
 
-        self._lig_counter = 0
+        self._lookup_count = 0
 
-    def add_ligature(self, input_chars, firacode_ligature_name):
-        self._lig_counter += 1
+        self.feature = (('calt', (('DFLT', ('dflt',)), ('arab', ('dflt',)), ('armn', ('dflt',)), ('cyrl', ('SRB ', 'dflt')), ('geor', ('dflt',)), ('grek', ('dflt',)), ('lao ', ('dflt',)), ('latn', ('CAT ', 'ESP ', 'GAL ', 'ISM ', 'KSM ', 'LSM ', 'MOL ', 'NSM ', 'ROM ', 'SKS ', 'SSM ', 'dflt')), ('math', ('dflt',)), ('thai', ('dflt',)))),)
+        
+        self.macro_length_lookup = "calt.macro.length"
+        self._max_macro_len = -1
 
-        ligature_name = 'lig.{}'.format(self._lig_counter)
 
-        self.font.createChar(-1, ligature_name)
-        firacode.selection.none()
-        firacode.selection.select(firacode_ligature_name)
-        firacode.copy()
+    def add_glyph_from(self, glyph_name: "str", font, source_glyph: "str"):
+        """ Add glyph to this font. Name of the new glyph is `glyph_name`. """
+        self.font.createChar(-1, glyph_name)
+
+        font.selection.none()
+        font.selection.select(source_glyph)
+        font.copy()
+
         self.font.selection.none()
-        self.font.selection.select(ligature_name)
+        self.font.selection.select(glyph_name)
         self.font.paste()
 
+    def add_unicode_glyph_from(self, glyph_name: "str", fonts: "list", unicode_char: "str"):
+        """ Add glyph to this font. Name of the new glyph is `glyph_name`.
+            `source_glyph` is a single char unicode string """
+        for font in fonts:
+            glyph = find_unicode_glyph(font, unicode_char)
+            if glyph is not None:
+                self.add_glyph_from(glyph_name, font, glyph)
+                return
+        raise Exception("Unicode glyph '{unicode_char}' not found in provided fonts")
 
-        self.font.selection.none()
-        self.font.selection.select('space')
-        self.font.copy()
+    def macro_glyph(self, length: "int"):
+        return f"macro.{length}.liga"
 
-        lookup_name = lambda i: 'lookup.{}.{}'.format(self._lig_counter, i)
-        lookup_sub_name = lambda i: 'lookup.sub.{}.{}'.format(self._lig_counter, i)
-        cr_name = lambda i: 'CR.{}.{}'.format(self._lig_counter, i)
+    def lookup_macros(self, max_len: "int"):
+        """ Replaces the '\\' in any macro of length `n` smaller than `max_len` with the glyph `self.macro_glyph(n)`. """
 
-        for i, char in enumerate(input_chars):
-            self.font.addLookup(lookup_name(i), 'gsub_single', (), ())
-            self.font.addLookupSubtable(lookup_name(i), lookup_sub_name(i))
+        # Create a lookup if not done so far
+        macro_length_lookup = self.macro_length_lookup
+        if not macro_length_lookup in self.font.gsub_lookups:
+            self.font.addLookup(macro_length_lookup, "gsub_contextchain", (), self.feature)
 
-            if i < len(input_chars) - 1:
-                self.font.createChar(-1, cr_name(i))
-                self.font.selection.none()
-                self.font.selection.select(cr_name(i))
-                self.font.paste()
+        lookup_name = lambda i: f"lookup.macro.length.{length}"
+        lookup_sub_name = lambda i: f"lookup.sub.macro.length.{length}"
 
-                self.font[char].addPosSub(lookup_sub_name(i), cr_name(i))
-            else:
-                self.font[char].addPosSub(lookup_sub_name(i), ligature_name)
+        if max_len <= self._max_macro_len:
+            return
 
+        # Add contextual lookup for all length values (if not done so far)
+        for length in range(self._max_macro_len+2,max_len+2):
 
-        calt_lookup_name = 'calt.{}'.format(self._lig_counter)
-        self.font.addLookup(calt_lookup_name, 'gsub_contextchain', (), (('calt', (('DFLT', ('dflt',)), ('arab', ('dflt',)), ('armn', ('dflt',)), ('cyrl', ('SRB ', 'dflt')), ('geor', ('dflt',)), ('grek', ('dflt',)), ('lao ', ('dflt',)), ('latn', ('CAT ', 'ESP ', 'GAL ', 'ISM ', 'KSM ', 'LSM ', 'MOL ', 'NSM ', 'ROM ', 'SKS ', 'SSM ', 'dflt')), ('math', ('dflt',)), ('thai', ('dflt',)))),))
-        for i, char in enumerate(input_chars):
-            ctx_subtable_name = 'calt.{}.{}'.format(self._lig_counter, i)
-            ctx_spec = '{prev} | {cur} @<{lookup}> | {next}'.format(
-                prev = ' '.join(cr_name(j) for j in range(i)),
-                cur = char,
-                lookup = lookup_name(i),
-                next = ' '.join(input_chars[i+1:]),
+            if not self.macro_glyph(length) in self.font:
+                self.add_glyph_from(self.macro_glyph(length), font=self.font, source_glyph="backslash")
+            
+            # Create single sub lookup for macro character
+            self.font.addLookup(lookup_name(length), "gsub_single", (), ())
+            self.font.addLookupSubtable(lookup_name(length), lookup_sub_name(length))
+
+            self.font["backslash"].addPosSub(lookup_sub_name(length), self.macro_glyph(length))
+
+            # Add contextual lookup
+            self.font.addContextualSubtable(
+                macro_length_lookup,
+                f"lookup.ctx.macro.length.{length}",
+                "class",
+                f"| 1 @<{lookup_name(length)}> | {' '.join(['1']*length)}",
+                bclasses=((), ),
+                fclasses=((), LETTERS),
+                mclasses=((), ("backslash",))
             )
-            self.font.addContextualSubtable(calt_lookup_name, ctx_subtable_name, 'glyph', ctx_spec)
+        
+        self._max_macro_len = max_len
+    
+    def add_multi_ligature(self,
+            char_in: "list(str)",
+            char_out: "list(str)",
+            look_back: "list(str)" = [],
+            look_ahead: "list(str)" = [],
+            lookup_feature=(),
+            lookup_after=None
+        ):
+        if(len(char_in) < len(char_out)):
+            raise Exception("Can only replace by shorter sequence")
+        lookup_number = self._lookup_count
+        self._lookup_count = self._lookup_count + 1
 
+        ctx_lookup_name = f"lookup.ctx.N{lookup_number}"
+        ctx_lookup_sub_name = f"lookup.ctx.sub.N{lookup_number}"
+        lookup_name = lambda i : f"lookup.N{lookup_number}.{i}"
+        lookup_sub_name = lambda i : f"lookup.sub.N{lookup_number}.sub.{i}"
+
+        # Lookups for all but last char
+        for i in range(len(char_out) - 1):
+            self.font.addLookup(lookup_name(i), 'gsub_single', (), (), "calt.macro.length")
+            self.font.addLookupSubtable(lookup_name(i), lookup_sub_name(i))
+            self.font[char_in[i]].addPosSub(lookup_sub_name(i), char_out[i])
+
+        # Lookup for last char
+        i = len(char_out)-1
+        self.font.addLookup(lookup_name(i), 'gsub_ligature', (), (), "calt.macro.length")
+        self.font.addLookupSubtable(lookup_name(i), lookup_sub_name(i))
+        self.font[char_out[i]].addPosSub(lookup_sub_name(i), tuple(char_in[i:]))
+
+        # Call lookups from context
+        main_patern = ' '.join(f"{char_in[i]} @<{lookup_name(i)}>" for i in range(len(char_out))) + ' '.join([f"{c}" for c in char_in[len(char_out):]])
+        pattern = f"{' '.join(look_back)} | {main_patern} | {' '.join(look_ahead)}"
+        
+        if lookup_after is None:
+            self.font.addLookup(ctx_lookup_name, 'gsub_contextchain', (), lookup_feature)
+        else:
+            self.font.addLookup(ctx_lookup_name, 'gsub_contextchain', (), lookup_feature, lookup_after)
+        self.font.addContextualSubtable(
+                ctx_lookup_name,
+                ctx_lookup_sub_name,
+                'glyph',
+                pattern
+            )
+    
+    def add_macro(self, macro: "str", replacement: "str"):
+        self.lookup_macros(len(macro))
+
+        macro_glyph = self.macro_glyph(len(macro))
+        input_chars = list(macro)
+        output_chars = []
+
+        glyph_name = lambda i: f"repl.macro.{macro}.{i}"
+
+        for i, char in enumerate(list(replacement)):
+            output_chars.append(glyph_name(i))
+            self.add_unicode_glyph_from(glyph_name(i), fonts=self.ligature_fonts, unicode_char=char)
+        
+        self.add_multi_ligature(
+            input_chars,
+            output_chars,
+            look_back=[macro_glyph],
+            lookup_feature=self.feature,
+            lookup_after="calt.macro.length"
+        )
+    
+    def add_macro_font_single(self, macro: "str", argMap: "dict[str,str]"):
+        """ For macros of the form `\mathbb N` or `\mathbb{N}` """
+        self.lookup_macros(len(macro))
+
+        macro_glyph = self.macro_glyph(len(macro))
+        open_glyph = find_unicode_glyph(self.font, "{")
+        close_glyph = find_unicode_glyph(self.font, "}")
+
+
+        for arg in argMap:
+            glyph_name = lambda i: f"repl.macro.{macro}.{arg}.{i}"
+
+            output_chars = []
+
+            for i, char in enumerate(list(argMap[arg])):
+                output_chars.append(glyph_name(i))
+                self.add_unicode_glyph_from(glyph_name(i), fonts=self.ligature_fonts, unicode_char=char)
+
+            arg_glyph = find_unicode_glyph(self.font, arg)
+
+            # without { }
+            in_chars1 = list(macro) + ["space", arg_glyph]
+            self.add_multi_ligature(
+                in_chars1,
+                output_chars,
+                look_back=[macro_glyph],
+                lookup_feature=self.feature,
+                lookup_after="calt.macro.length"
+            )
+
+            # with { }
+            in_chars2 = list(macro) + [open_glyph, arg_glyph, close_glyph]
+            self.add_multi_ligature(
+                in_chars2,
+                output_chars,
+                look_back=[macro_glyph],
+                lookup_feature=self.feature,
+                lookup_after="calt.macro.length"
+            )
+
+    def add_macro2(self, macro: "str", replacement: "str"):
+        macro_glyph = self.macro_glyph(len(macro))
+        input_chars = list(macro)
+        output_chars = []
+
+        glyph_name = lambda i: f"repl.macro.{macro}.{i}"
+
+        for i, char in enumerate(list(replacement)):
+            output_chars.append(glyph_name(i))
+            for lig_font in self.ligature_fonts:
+                repl_glyph = find_unicode_glyph(lig_font, char)
+                if(repl_glyph is not None):
+                    self.font.createChar(-1, glyph_name(i))
+                    lig_font.selection.none()
+                    lig_font.selection.select(repl_glyph)
+                    lig_font.copy()
+                    self.font.selection.none()
+                    self.font.selection.select(glyph_name(i))
+                    self.font.paste()
+                    break
+        
+        if len(input_chars) < len(output_chars):
+            raise Exception("Macro replacement must be shorter than the macro")
+
+        # contextual lookup for macro
+        ctx_lookup_name = f"calt.macro.{macro}"
+        self.font.addLookup(ctx_lookup_name, 'gsub_contextchain', (), self.feature, "calt.macro.length")
+
+        lookup_name = lambda i: f"lookup.macro.{macro}.{i}"
+        lookup_sub_name = lambda i: f"lookup.sub.macro.{macro}.{i}"
+
+        # substitution lookup for i-th chatacter for all but last output
+        for i in range(len(output_chars)-1):
+            in_char = input_chars[i]
+            out_char = output_chars[i]
+
+            self.font.addLookup(lookup_name(i), 'gsub_single', (), (), "calt.macro.length")
+            self.font.addLookupSubtable(lookup_name(i), lookup_sub_name(i))
+            self.font[in_char].addPosSub(lookup_sub_name(i), out_char)
+
+        # Perform ligature substitution on the last part
+        i = len(output_chars)-1
+        in_char = input_chars[i]
+        out_char = output_chars[i]
+
+        self.font.addLookup(lookup_name(i), 'gsub_ligature', (), (), "calt.macro.length")
+        self.font.addLookupSubtable(lookup_name(i), lookup_sub_name(i))
+        self.font[output_chars[i]].addPosSub(lookup_sub_name(i), tuple(input_chars[i:]))
+
+        # Create the contextual lookup
+        pattern = ' '.join([f"{k} @<{lookup_name(i)}>" for i, k in enumerate(input_chars[:len(output_chars)])]) + " " + ' '.join([f"{c}" for c in input_chars[len(output_chars):]])
+        pattern = f"{macro_glyph} | {pattern} | "
+        self.font.addContextualSubtable(
+                ctx_lookup_name,
+                f"calt.sub.macro.{macro}",
+                'glyph',
+                pattern
+            )
 
 def change_font_names(font, fontname, fullname, familyname, copyright_add, unique_id):
     font.fontname = fontname
@@ -281,32 +349,37 @@ def change_font_names(font, fontname, fullname, familyname, copyright_add, uniqu
         (row[0], 'UniqueID', unique_id) if row[1] == 'UniqueID' else row
         for row in font.sfnt_names
     )
-
+    
 input_fontname = get_input_fontname()
 input_font_path = get_input_path(input_fontname)
 
 output_fontname = get_output_fontname(input_fontname)
 output_font = get_output_font_details(output_fontname)
-
 font = fontforge.open(input_font_path)
 firacode = fontforge.open(config['firacode_ttf'])
 firacode.em = font.em
 
-creator = LigatureCreator(font, firacode)
-ligature_length = lambda lig: len(lig['chars'])
-for lig_spec in sorted(config['add_ligatures'], key = ligature_length):
-    try:
-        creator.add_ligature(lig_spec['chars'], lig_spec['firacode_ligature_name'])
-    except Exception as e:
-        print('Exception while adding ligature: {}'.format(lig_spec))
-        raise
+cr = LaTeXLigatureCreator(font, [firacode, font])
+
+for lig_group in ligatures:
+    lig_type = lig_group["type"]
+    
+    if lig_type == "macro":
+        macros = lig_group["macros"]
+        for macro in macros:
+            cr.add_macro(macro, macros[macro])
+    elif lig_type == "macro + char":
+        macros = lig_group["macros"]
+        for macro in macros:
+            cr.add_macro_font_single(macro, macros[macro])
+    else:
+        print(f"Ligature type '{lig_type}' not found!")
 
 change_font_names(font, output_font['fontname'],
                         output_font['fullname'],
                         output_font['familyname'],
                         output_font['copyright_add'],
                         output_font['unique_id'])
-
 
 # Generate font & move to output directory
 output_name = output_font['filename']
