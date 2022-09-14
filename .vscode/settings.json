@@ -1,4 +1,5 @@
 {
   "editor.fontFamily": "'Test', 'Droid Sans Mono', 'monospace', monospace",
-  "editor.fontLigatures": true
+  "editor.fontLigatures": true,
+  "python.analysis.typeCheckingMode": "basic"
 }

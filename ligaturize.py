@@ -1,13 +1,9 @@
 #!/usr/bin/env python
+from collections import OrderedDict
 import fontforge
 import os
 from pathlib import Path
-from ligatures import Macros, LIGATURES, MAIN_FONT, FONTS, OUT_FONT_NAME, COPYRIGHT
-from typing import Literal
-
-config = {
-    'firacode_ttf': 'FiraCode-Regular.ttf',
-}
+from typing import Any, Dict, List, Literal, Optional
 
 def name_from_codepoint(font, unicode_str):
     unicode = ord(unicode_str)
@@ -16,13 +12,14 @@ def name_from_codepoint(font, unicode_str):
         glyph = font[glyph_name]
         if glyph.unicode == unicode:
             return glyph_name
-        if(glyph.altuni is not None):
+        if (glyph.altuni is not None):
             for alt in glyph.altuni:
-                if(alt[0] == unicode):
+                if (alt[0] == unicode):
                     alt_match = glyph_name
     return alt_match
 
-def find_unicode_glyph(font, unicode_char):
+
+def find_unicode_glyph(font, unicode_char) -> Optional[str]:
     """ takes Single character string """
     unicode = ord(unicode_char)
     alt_match = None
@@ -30,25 +27,15 @@ def find_unicode_glyph(font, unicode_char):
         glyph = font[glyph_name]
         if glyph.unicode == unicode:
             return glyph_name
-        if(glyph.altuni is not None):
+        if (glyph.altuni is not None):
             for alt in glyph.altuni:
-                if(alt[0] == unicode):
+                if (alt[0] == unicode):
                     alt_match = glyph_name
     return alt_match
 
-def get_output_font_details(fontname):
-    name_with_spaces = split_camel_case(fontname)
-    return {
-        'filename': fontname + '.ttf',
-        'fontname': fontname,
-        'fullname': name_with_spaces,
-        'familyname': name_with_spaces,
-        'copyright_add': COPYRIGHT,
-        'unique_id': name_with_spaces,
-    }
 
-# Add spaces to UpperCamelCase: 'DVCode' -> 'DV Code'
 def split_camel_case(str):
+    """ Add spaces to UpperCamelCase: 'DVCode' -> 'DV Code' """
     acc = ''
     for (i, ch) in enumerate(str):
         prevIsSpace = i > 0 and acc[-1] == ' '
@@ -62,6 +49,7 @@ def split_camel_case(str):
             acc += ch
     return acc
 
+
 def change_font_names(font, fontname, fullname, familyname, copyright_add, unique_id):
     font.fontname = fontname
     font.fullname = fullname
@@ -72,41 +60,46 @@ def change_font_names(font, fontname, fullname, familyname, copyright_add, uniqu
         for row in font.sfnt_names
     )
 
-LETTERS = tuple('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
 
-class LaTeXLigatureCreator:
-    """
-    Macros have to be registered with decreasing length. This prevents macros from being overly long.
-    """
-
-    def __init__(self, font, source_fonts: "dict"):
+class _EditorBackend:
+    def __init__(self, font, other_fonts):
         self.font = font
-        self.source_fonts = source_fonts
+        self.source_fonts: dict[str, Any] = other_fonts
 
-        self.glyph_fonts = {}
-        self.glyph_fonts["Default"] = {
+        """
+        Dict mapping glyphs to their names.
+        Use `useable_glyphs[FONT_NAME][FORMAT][GLYPH]` where `FORMAT` is "unicode" or "name"
+        and `GLYPH` is single character unicode string or the glyph name.
+        """
+        self.useable_glyphs: dict[str,
+                                  dict[Literal["unicode", "name"], dict[str, str]]] = {}
+        self.useable_glyphs["Default"] = {
             "unicode": {},
             "name": {}
         }
         for k in font:
-            self.glyph_fonts["Default"]["name"][k] = k
+            self.useable_glyphs["Default"]["name"][k] = k
             if font[k].unicode != -1:
-                self.glyph_fonts["Default"]["unicode"][chr(font[k].unicode)] = k
+                self.useable_glyphs["Default"]["unicode"][chr(
+                    font[k].unicode)] = k
 
-        self._lookup_count = 0
+        self.feature = (('calt', (('DFLT', ('dflt',)), ('arab', ('dflt',)), ('armn', ('dflt',)), ('cyrl', ('SRB ', 'dflt')), ('geor', ('dflt',)), ('grek', ('dflt',)), ('lao ',
+                        ('dflt',)), ('latn', ('CAT ', 'ESP ', 'GAL ', 'ISM ', 'KSM ', 'LSM ', 'MOL ', 'NSM ', 'ROM ', 'SKS ', 'SSM ', 'dflt')), ('math', ('dflt',)), ('thai', ('dflt',)))),)
 
-        self.feature = (('calt', (('DFLT', ('dflt',)), ('arab', ('dflt',)), ('armn', ('dflt',)), ('cyrl', ('SRB ', 'dflt')), ('geor', ('dflt',)), ('grek', ('dflt',)), ('lao ', ('dflt',)), ('latn', ('CAT ', 'ESP ', 'GAL ', 'ISM ', 'KSM ', 'LSM ', 'MOL ', 'NSM ', 'ROM ', 'SKS ', 'SSM ', 'dflt')), ('math', ('dflt',)), ('thai', ('dflt',)))),)
-        
+        # Special glyph names
+        self.SPACE = self.useable_glyphs["Default"]["unicode"][" "]
+        self.BACKSLASH = self.useable_glyphs["Default"]["unicode"]["\\"]
+        self.NO_BREAK_SPACE = self.useable_glyphs["Default"]["unicode"][chr(
+            160)]
+        self.CURL_OPEN = self.useable_glyphs["Default"]["unicode"]["{"]
+        self.CURL_CLOSE = self.useable_glyphs["Default"]["unicode"]["}"]
+        # Macros
         self.macro_length_lookup = "calt.macro.length"
-        self._max_macro_len = -1
 
-        self.SPACE = self.glyph_fonts["Default"]["unicode"][" "]
-        self.BACKSLASH = self.glyph_fonts["Default"]["unicode"]["\\"]
-        self.NO_BREAK_SPACE = self.glyph_fonts["Default"]["unicode"][chr(160)]
-        self.CURL_OPEN = self.glyph_fonts["Default"]["unicode"]["{"]
-        self.CURL_CLOSE = self.glyph_fonts["Default"]["unicode"]["}"]
-
-    def _add_glyph(self, glyph_name: "str", source_glyph: "str", font):
+    def add_glyph_manually(self, glyph_name: "str", source_glyph: "str", font):
+        """
+        Add a new glyph to the font. The added glyph has name `glyph_name` and if taken from `font[source_glyph]`.
+        """
         self.font.createChar(-1, glyph_name)
 
         font.selection.none()
@@ -117,13 +110,13 @@ class LaTeXLigatureCreator:
         self.font.selection.select(glyph_name)
         self.font.paste()
 
-    def use_glyph(self, glyph: "str", fonts: "list[str]"=None, format: "Literal['unicode', 'name']"='unicode') -> "str":
+    def use_glyph(self, glyph: str, *, fonts: Optional[List[str]] = None, format: Literal["unicode", "name"] = "unicode"):
         if fonts is None:
             fonts = ["Default"] + list(self.source_fonts.keys())
-
+        
         for font_name in fonts:
-            if font_name in self.glyph_fonts and glyph in self.glyph_fonts[font_name][format]:
-                return self.glyph_fonts[font_name][format][glyph]
+            if font_name in self.useable_glyphs and glyph in self.useable_glyphs[font_name][format]:
+                return self.useable_glyphs[font_name][format][glyph]
             if font_name == "Default":
                 continue
 
@@ -133,49 +126,147 @@ class LaTeXLigatureCreator:
                 glyph_name = find_unicode_glyph(font, glyph)
             elif glyph in font:
                 glyph_name = glyph
-            
+
             if glyph_name is not None:
-                if font_name not in self.glyph_fonts:
-                    self.glyph_fonts[font_name] = {"unicode": {}, "name": {}}
+                if font_name not in self.useable_glyphs:
+                    self.useable_glyphs[font_name] = {
+                        "unicode": {}, "name": {}}
 
-                new_name = "tex."+''.join([c for c in font_name if c.isalpha()])+"."+glyph_name
+                new_name = "tex." + \
+                    ''.join([c for c in font_name if c.isalpha()]) + \
+                    "."+glyph_name
 
-                self.glyph_fonts[font_name]["name"][glyph_name] = new_name
+                self.useable_glyphs[font_name]["name"][glyph_name] = new_name
                 if font[glyph_name].unicode != -1:
-                    self.glyph_fonts[font_name]["unicode"][chr(font[glyph_name].unicode)] = new_name
+                    self.useable_glyphs[font_name]["unicode"][chr(
+                        font[glyph_name].unicode)] = new_name
 
-                self._add_glyph(new_name, glyph_name, font)
+                self.add_glyph_manually(new_name, glyph_name, font)
                 return new_name
-        raise Exception(f"Glyph '{glyph}' (format='{format}') not found in given fonts.")
+        raise Exception(
+            f"Glyph '{glyph}' (format='{format}') not found in given fonts.")
 
-    def macro_glyph(self, length: "int"):
+    def use_glyph_format(self, glyphs: str, *, fonts: Optional[List[str]] = None, format: Literal["unicode", "advanced"] = "unicode") -> List[str]:
+        """
+        unicode: parses the string of unicode characters directly.
+        advanced: pass glyphs as space separated glyph names. One may specify a font per glyph directly usign "GLYPH_NAME@FONT_NAME".
+        """
+        glyph_list = []
+
+        if format == "unicode":
+            for char in list(glyphs):
+                glyph_list.append(self.use_glyph(char, fonts=fonts))
+        elif format == "advanced":
+            name_list = glyphs.split(" ")
+            for glyph_name in name_list:
+                split_name = glyph_name.split("*", maxsplit=1)
+                # add glyph from default fonts. else use the font specified after *
+                if len(split_name) == 1:
+                    glyph_list.append(self.use_glyph(
+                        split_name[0], format="name", fonts=fonts))
+                else:
+                    glyph_list.append(self.use_glyph(
+                        split_name[0], fonts=[split_name[1]], format="name"))
+        else:
+            raise Exception("Unknown format")
+        return glyph_list
+
+    def add_advanced_ligature(
+        self,
+        char_in: List[str],
+        char_out: List[str],
+        *,
+        lookup_name=None,
+        look_back: List[str] = [],
+        look_ahead: List[str] = [],
+        lookup_feature=(),
+        lookup_after=None
+    ):
+        if (len(char_in) < len(char_out)):
+            raise Exception("Can only replace by shorter sequence")
+        if not hasattr(self, "_lookup_count"):
+            self._lookup_count = 0
+        lookup_number = self._lookup_count
+        self._lookup_count = self._lookup_count + 1
+
+        ctx_lookup_name = f"lookup.ctx.N{lookup_number}" if lookup_name is None else lookup_name
+        ctx_lookup_sub_name = f"lookup.ctx.sub.N{lookup_number}"
+        def gsub_lookup_name(i): return f"lookup.N{lookup_number}.{i}"
+        def gsub_lookup_sub_name(
+            i): return f"lookup.sub.N{lookup_number}.sub.{i}"
+
+        # Lookups for all but last char
+        for i in range(len(char_out) - 1):
+            self.font.addLookup(gsub_lookup_name(
+                i), 'gsub_single', (), (), "calt.macro.length")
+            self.font.addLookupSubtable(
+                gsub_lookup_name(i), gsub_lookup_sub_name(i))
+            self.font[char_in[i]].addPosSub(
+                gsub_lookup_sub_name(i), char_out[i])
+
+        # Lookup for last char
+        i = len(char_out)-1
+        self.font.addLookup(gsub_lookup_name(
+            i), 'gsub_ligature', (), (), "calt.macro.length")
+        self.font.addLookupSubtable(
+            gsub_lookup_name(i), gsub_lookup_sub_name(i))
+        self.font[char_out[i]].addPosSub(
+            gsub_lookup_sub_name(i), tuple(char_in[i:]))
+
+        # Call lookups from context
+        main_patern = ' '.join(f"{char_in[i]} @<{gsub_lookup_name(i)}>" for i in range(
+            len(char_out))) + ' '.join([f"{c}" for c in char_in[len(char_out):]])
+        pattern = f"{' '.join(look_back)} | {main_patern} | {' '.join(look_ahead)}"
+
+        if lookup_after is None:
+            self.font.addLookup(
+                ctx_lookup_name, 'gsub_contextchain', (), lookup_feature)
+        else:
+            self.font.addLookup(
+                ctx_lookup_name, 'gsub_contextchain', (), lookup_feature, lookup_after)
+        self.font.addContextualSubtable(
+            ctx_lookup_name,
+            ctx_lookup_sub_name,
+            'glyph',
+            pattern
+        )
+
+    ## MACROS ##
+    def macro_glyph_name(self, length: "int"):
         return f"macro.{length}.liga"
 
+    # The heavy lifting for macros is done here
     def lookup_macros(self, max_len: "int"):
-        """ Replaces the '\\' in any macro of length `n` smaller than `max_len` with the glyph `self.macro_glyph(n)`. """
+        """ Replaces the '\\' in any macro of length `n` smaller than `max_len` with the glyph `self.macro_glyph_name(n)`. """
 
         # Create a lookup if not done so far
         macro_length_lookup = self.macro_length_lookup
         if not macro_length_lookup in self.font.gsub_lookups:
-            self.font.addLookup(macro_length_lookup, "gsub_contextchain", (), self.feature)
+            self.font.addLookup(macro_length_lookup,
+                                "gsub_contextchain", (), self.feature)
 
-        lookup_name = lambda i: f"lookup.macro.length.{length}"
-        lookup_sub_name = lambda i: f"lookup.sub.macro.length.{length}"
+        def lookup_name(i): return f"lookup.macro.length.{length}"
+        def lookup_sub_name(i): return f"lookup.sub.macro.length.{length}"
 
+        if not hasattr(self, "_max_macro_len"):
+            self._max_macro_len = -1
         if max_len <= self._max_macro_len:
             return
 
         # Add contextual lookup for all length values (if not done so far)
-        for length in range(self._max_macro_len+2,max_len+2):
+        for length in range(self._max_macro_len+2, max_len+2):
 
-            if not self.macro_glyph(length) in self.font:
-                self._add_glyph(self.macro_glyph(length), source_glyph=self.BACKSLASH, font=self.font)
-            
+            if not self.macro_glyph_name(length) in self.font:
+                self.add_glyph_manually(self.macro_glyph_name(
+                    length), source_glyph=self.BACKSLASH, font=self.font)
+
             # Create single sub lookup for macro character
             self.font.addLookup(lookup_name(length), "gsub_single", (), ())
-            self.font.addLookupSubtable(lookup_name(length), lookup_sub_name(length))
+            self.font.addLookupSubtable(
+                lookup_name(length), lookup_sub_name(length))
 
-            self.font[self.BACKSLASH].addPosSub(lookup_sub_name(length), self.macro_glyph(length))
+            self.font[self.BACKSLASH].addPosSub(
+                lookup_sub_name(length), self.macro_glyph_name(length))
 
             # Add contextual lookup
             self.font.addContextualSubtable(
@@ -187,183 +278,140 @@ class LaTeXLigatureCreator:
                 fclasses=((), LETTERS),
                 mclasses=((), (self.BACKSLASH,))
             )
-        
+
         self._max_macro_len = max_len
-    
-    def add_multi_ligature(self,
-            char_in: "list(str)",
-            char_out: "list(str)",
-            look_back: "list(str)" = [],
-            look_ahead: "list(str)" = [],
-            lookup_feature=(),
-            lookup_after=None
-        ):
-        if(len(char_in) < len(char_out)):
-            raise Exception("Can only replace by shorter sequence")
-        lookup_number = self._lookup_count
-        self._lookup_count = self._lookup_count + 1
 
-        ctx_lookup_name = f"lookup.ctx.N{lookup_number}"
-        ctx_lookup_sub_name = f"lookup.ctx.sub.N{lookup_number}"
-        lookup_name = lambda i : f"lookup.N{lookup_number}.{i}"
-        lookup_sub_name = lambda i : f"lookup.sub.N{lookup_number}.sub.{i}"
-
-        # Lookups for all but last char
-        for i in range(len(char_out) - 1):
-            self.font.addLookup(lookup_name(i), 'gsub_single', (), (), "calt.macro.length")
-            self.font.addLookupSubtable(lookup_name(i), lookup_sub_name(i))
-            self.font[char_in[i]].addPosSub(lookup_sub_name(i), char_out[i])
-
-        # Lookup for last char
-        i = len(char_out)-1
-        self.font.addLookup(lookup_name(i), 'gsub_ligature', (), (), "calt.macro.length")
-        self.font.addLookupSubtable(lookup_name(i), lookup_sub_name(i))
-        self.font[char_out[i]].addPosSub(lookup_sub_name(i), tuple(char_in[i:]))
-
-        # Call lookups from context
-        main_patern = ' '.join(f"{char_in[i]} @<{lookup_name(i)}>" for i in range(len(char_out))) + ' '.join([f"{c}" for c in char_in[len(char_out):]])
-        pattern = f"{' '.join(look_back)} | {main_patern} | {' '.join(look_ahead)}"
-        
-        if lookup_after is None:
-            self.font.addLookup(ctx_lookup_name, 'gsub_contextchain', (), lookup_feature)
-        else:
-            self.font.addLookup(ctx_lookup_name, 'gsub_contextchain', (), lookup_feature, lookup_after)
-        self.font.addContextualSubtable(
-                ctx_lookup_name,
-                ctx_lookup_sub_name,
-                'glyph',
-                pattern
-            )
-    
-    def add_simple_ligature(self, characters: "str", ligature: "str", fonts=None):
-        lookup_number = self._lookup_count
-        self._lookup_count = self._lookup_count + 1
-
-        lig_glyph = self.use_glyph(ligature, fonts, 'unicode')
-        lig_characters = [self.use_glyph(c, ["Default"], "unicode") for c in list(characters)]
-
-        lookup_name = f"lookup.N{lookup_number}.0"
-        lookup_sub_name = f"lookup.sub.N{lookup_number}.sub.0"
-
-        self.font.addLookup(lookup_name, 'gsub_ligature', (), self.feature, "calt.macro.length")
-        self.font.addLookupSubtable(lookup_name, lookup_sub_name)
-        self.font[lig_glyph].addPosSub(lookup_sub_name, lig_characters)
-
-    def add_macro(self, macro: "str", replacement: "str", fonts=None):
+    def add_macro(self, macro: "str", replacement: "str", *, fonts: Optional[List[str]] = None, repl_format: Literal['unicode', 'advanced'] = "unicode"):
         self.lookup_macros(len(macro))
 
-        macro_glyph = self.macro_glyph(len(macro))
-        input_chars = list(macro)
-        output_chars = []
+        input_chars = [self.macro_glyph_name(
+            len(macro))] + self.use_glyph_format(macro, format="unicode")
+        output_chars = [self.BACKSLASH] + self.use_glyph_format(replacement, fonts=fonts, format=repl_format)
 
-        for char in list(replacement):
-            output_chars.append(self.use_glyph(char, fonts, "unicode"))
-        
-        self.add_multi_ligature(
-            [macro_glyph]+input_chars,
-            [self.BACKSLASH]+output_chars,
-            look_back=[],
+        self.add_advanced_ligature(
+            input_chars,
+            output_chars,
             lookup_feature=self.feature,
-            lookup_after="calt.macro.length"
+            lookup_after=self.macro_length_lookup
         )
-    
-    def add_macro_font_single(self, macro: "str", argMap: "dict[str,str]", fonts=None):
+
+    def add_macro_font(self, macro: "str", map: "dict[str,str]", *, fonts=None, repl_format: Literal['unicode', 'advanced'] = "unicode"):
         """ For macros of the form `\mathbb N` or `\mathbb{N}` """
         self.lookup_macros(len(macro))
 
-        macro_glyph = self.macro_glyph(len(macro))
+        macro_glyph = self.macro_glyph_name(len(macro))
 
+        for character, replacement in map.items():
 
-        for arg in argMap:
-            output_chars = []
+            char_in = [macro_glyph] + \
+                self.use_glyph_format(macro, fonts=["Default"])
+            char_out = [self.BACKSLASH] + \
+                self.use_glyph_format(
+                    replacement, fonts=fonts, format=repl_format)
 
-            for char in list(argMap[arg]):
-                output_chars.append(self.use_glyph(char, fonts, "unicode"))
-
-            arg_glyph = find_unicode_glyph(self.font, arg)
+            arg_glyph: str = self.use_glyph(character, fonts=["Default"])
 
             # without { }
-            in_chars1 = list(macro) + [self.SPACE, arg_glyph]
-            self.add_multi_ligature(
-                [macro_glyph]+in_chars1,
-                [self.BACKSLASH]+output_chars,
-                look_back=[],
+            self.add_advanced_ligature(
+                char_in+[self.SPACE, arg_glyph],
+                char_out,
                 lookup_feature=self.feature,
-                lookup_after="calt.macro.length"
+                lookup_after=self.macro_length_lookup
             )
-
-            in_chars1 = list(macro) + [self.NO_BREAK_SPACE, arg_glyph]
-            self.add_multi_ligature(
-                [macro_glyph]+in_chars1,
-                [self.BACKSLASH]+output_chars,
-                look_back=[],
+            self.add_advanced_ligature(
+                char_in+[self.NO_BREAK_SPACE, arg_glyph],
+                char_out,
                 lookup_feature=self.feature,
-                lookup_after="calt.macro.length"
+                lookup_after=self.macro_length_lookup
             )
 
             # with { }
-            in_chars2 = list(macro) + [self.CURL_OPEN, arg_glyph, self.CURL_CLOSE]
-            self.add_multi_ligature(
-                [macro_glyph]+in_chars2,
-                [self.BACKSLASH]+output_chars,
-                look_back=[],
+            self.add_advanced_ligature(
+                char_in+[self.CURL_OPEN, arg_glyph, self.CURL_CLOSE],
+                char_out,
                 lookup_feature=self.feature,
-                lookup_after="calt.macro.length"
+                lookup_after=self.macro_length_lookup
             )
 
 
-input_folder = Path("input_files/")
-out_folder = Path("output_files/")
+Glyph_Format = Literal["unicode", "advanced"]
 
-main_font = fontforge.open((input_folder / MAIN_FONT).as_posix())
+class EditFont:
+    def __init__(self, font: str, *, other_fonts: Dict[str, str] = {}, in_folder: str="input_files", out_folder: str="output_files"):
+        self.in_folder = Path(in_folder)
+        self.out_folder = Path(out_folder)
 
-source_fonts = {}
-for font_name in FONTS:
-    f = fontforge.open((input_folder / FONTS[font_name]).as_posix())
-    f.em = main_font.em
-    source_fonts[font_name] = f
+        self.font = fontforge.open((self.in_folder / font).as_posix())
+        _other_fonts = OrderedDict()
+        for k, v in other_fonts.items():
+            _other_fonts[k] = fontforge.open((self.in_folder / v).as_posix())
 
-output_font_details = get_output_font_details(OUT_FONT_NAME)
+        self.backend = _EditorBackend(self.font, _other_fonts)
+        
 
-cr = LaTeXLigatureCreator(main_font, source_fonts)
+    def add_ligature(
+            self, characters: str, ligature: str, *,
+            fonts: Optional[List[str]] = None,
+            char_format: Glyph_Format = "unicode",
+            repl_format: Glyph_Format = "unicode"
+        ):
+        self.backend.add_advanced_ligature(
+            self.backend.use_glyph_format(characters, fonts=["Default"], format=char_format),
+            self.backend.use_glyph_format(ligature, fonts=fonts, format=repl_format),
+            lookup_feature=self.backend.feature
+        )
 
-for ligatures in LIGATURES:
-    ligature_type = ligatures.type
-    print(ligature_type)
-    # Treat differently depending on type
-    if ligature_type.startswith("macro"):
-        fonts = ligatures.fonts
-        glyph_format = ligatures.format
-        macros = ligatures.macros
+    def add_ligatures(
+            self, ligatures: dict, *,
+            char_prefix="",
+            char_suffix="",
+            lig_prefix="",
+            lig_suffix="",
+            fonts: Optional[List[str]] = None,
+            char_format: Glyph_Format = "unicode",
+            repl_format: Glyph_Format = "unicode"
+        ):
+        for characters, ligature in ligatures.items():
+            self.add_ligature(char_prefix + characters + char_suffix, lig_prefix + ligature + lig_suffix, fonts=fonts, char_format=char_format, repl_format=repl_format)
 
-        if ligature_type == "macro":
-            for macro in macros:
-                cr.add_macro(macro, macros[macro], fonts=fonts)
+    def add_macro(self, macro: str, replacement: str, *, fonts: Optional[List[str]] = None, repl_format: Glyph_Format="unicode"):
+        self.backend.add_macro(macro, replacement, fonts=fonts, repl_format=repl_format)
 
-        elif ligature_type == "macro + char":
-            for macro in macros:
-                cr.add_macro_font_single(macro, macros[macro], fonts=fonts)
-                
-        else:
-            raise Exception(f"Invalid ligature type {ligature_type}")
+    def add_macros(self, macros: dict, *, macro_prefix="", macro_suffix="", repl_prefix="", repl_suffix="", fonts: Optional[List[str]] = None, repl_format: Glyph_Format="unicode"):
+        for macro, replacement in macros.items():
+            self.add_macro(
+                macro_prefix + macro + macro_suffix,
+                repl_prefix+replacement+repl_suffix,
+                fonts=fonts,
+                repl_format=repl_format
+            )
 
-    elif ligature_type.startswith("ligature"):
-        fonts = ligatures.fonts
-        lig_dict = ligatures.ligatures
-        for chars in lig_dict:
-            cr.add_simple_ligature(chars, lig_dict[chars], fonts=fonts)
-    else:
-        raise Exception(f"Invalid ligature type {ligature_type}")
+    def add_macro_font(self, macro: str, map: dict, *, repl_prefix="", repl_suffix="", repl_format: Glyph_Format="unicode", fonts: Optional[List[str]] = None):
+        parsed_map = {}
+        for k, v in map.items():
+            parsed_map[k] = repl_prefix+v+repl_suffix
+        self.backend.add_macro_font(macro, parsed_map, fonts=fonts, repl_format=repl_format)
+    
+    def save(self, camel_name: str, *, file_name: Optional[str]=None, add_copyright: Optional[str]=None):
+        # Change font details
+        name_with_space = split_camel_case(camel_name)
+        if file_name is None:
+            file_name = f"{camel_name}.ttf"
+        
+        self.font.fontname = camel_name
+        self.font.fullname = name_with_space
+        self.font.familyname = name_with_space
+        if add_copyright is not None:
+            self.font.copyright += "\n"+add_copyright
+        # change only the UniqueID in sfnt names
+        self.font.sfnt_names = tuple((row[0], 'UniqueID', name_with_space) if row[1] == 'UniqueID' else row for row in self.font.sfnt_names)
 
-change_font_names(main_font, output_font_details['fontname'],
-                        output_font_details['fullname'],
-                        output_font_details['familyname'],
-                        output_font_details['copyright_add'],
-                        output_font_details['unique_id'])
+        # Generate font & move to output directory
+        output_full_path = self.out_folder / file_name
+        self.font.generate(file_name)
+        os.rename(file_name, output_full_path)
+        print(f"Generated ligaturized font {name_with_space} in {output_full_path.as_posix()}")
+        
 
-# Generate font & move to output directory
-output_name = output_font_details['filename']
-output_full_path = out_folder / output_name
-main_font.generate(output_name)
-os.rename(output_name, output_full_path)
-print("Generated ligaturized font %s in %s" % (output_font_details['fullname'], output_full_path))
+
+LETTERS = tuple('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')

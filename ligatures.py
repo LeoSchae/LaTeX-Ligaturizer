@@ -1,29 +1,18 @@
-from typing import Optional, Literal, Union
 from collections import OrderedDict
+from ligaturize import EditFont
 
-class Ligatures:
-    def __init__(self, type: "Literal['ligature']", format: "Literal['unicode']"="unicode", ligatures: "dict" = {}, fonts: "Optional[list[str]]"=None):
-        self.type = type
-        self.format = format
-        self.fonts = fonts
-        self.ligatures = {}
-        self.ligatures.update(ligatures)
-    def __str__(self):
-        return f"Ligatures(type='{self.type}', fonts={self.fonts}):\n\t{self.ligatures}"
+font = EditFont(
+    font="DroidSansMono.ttf",
+    other_fonts=OrderedDict([
+        ("DroidSansMono", "DroidSansMono.ttf"),
+        ("FiraCode",      "FiraCode-Regular.ttf"),
+        ("LatinModern",   "LatinModernMath.otf"),
+        ("DejaVu_Bold",   "DejaVuSansMono-Bold.ttf"),
+        ("DejaVu_Italic", "DejaVuSansMono-Italic.ttf")
+    ])
+)
 
-
-class Macros:
-    def __init__(self, type: "Literal['macro', 'macro + char']", format: "Literal['unicode', 'name']"="unicode", macros: "dict" = {}, fonts: "Optional[list[str]]"=None):
-        self.type = type
-        self.format = format
-        self.fonts = fonts
-        self.macros = {}
-        self.macros.update(macros)
-    def __str__(self):
-        return f"Macros(type='{self.type}', fonts={self.fonts}):\n\t{self.macros}"
-
-greek = Macros(type="macro", fonts=["DejaVu Italic"])
-greek.macros.update({
+greek_map = {
     "alpha": "α",
     "beta": "β",
     "gamma": "γ",
@@ -60,11 +49,11 @@ greek.macros.update({
     "Psi": "Ψ",
     "omega": "ω",
     "Omega": "Ω",
-})
+}
+font.add_macros(greek_map, fonts=["DejaVu_Italic"])
 
 
-misc = Macros(type="macro")
-misc.macros.update({
+font.add_macros({
     "infty": "∞",
     "forall": "∀",
     "exists": "∃",
@@ -79,8 +68,7 @@ misc.macros.update({
     "rfloor": "⌋"
 })
 
-operators = Macros(type="macro")
-operators.macros.update({
+font.add_macros({
     "times": "×",
     "cdot": "•",
     "cap": "∩",
@@ -98,20 +86,15 @@ operators.macros.update({
     "gg": "≫"
 })
 
-mathbb = Macros(type="macro + char")
-mathbb.macros.update({
-    "mathbb": {
+font.add_macro_font("mathbb", {
         "N": "ℕ",
         "Z": "ℤ",
         "Q": "ℚ",
         "R": "ℝ",
         "C": "ℂ",
-    }
-})
+    })
 
-shorthand_NZQRC = Macros(
-    type="macro",
-    macros={
+font.add_macros({
         "NN": "ℕ",
         "ZZ": "ℤ",
         "QQ": "ℚ",
@@ -119,87 +102,58 @@ shorthand_NZQRC = Macros(
         "CC": "ℂ"
     })
 
-mathcal = Macros(type="macro + char", macros={"mathcal": {}})
+mathcal_map = {}
 for c in list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
-    mathcal.macros["mathcal"][c] = chr(ord(c)-ord('A')+ord("𝓐"))
+    mathcal_map[c] = chr(ord(c)-ord('A')+ord("𝓐"))
+font.add_macro_font("mathcal", mathcal_map)
+font.add_macro_font("cal", mathcal_map)
 
-
-mathfrak = Macros(type="macro + char", macros={"mathfrak": {}})
+mathfrak_map = {}
 for c in list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
-    mathfrak.macros["mathfrak"][c] = chr(ord(c)-ord('A')+ord("𝕬"))
+    mathfrak_map[c] = chr(ord(c)-ord('A')+ord("𝕬"))
+font.add_macro_font("mathfrak", mathcal_map)
+font.add_macro_font("frak", mathcal_map)
 
-
-map_arrows = Macros(type="macro")
-map_arrows.macros.update({
+font.add_macros({
     "to": "⟶",
     "mapsto": "⟼"
 })
 
-# Name of the font to add to
-MAIN_FONT = "DroidSansMono.ttf"
 
-# Name of the font to create (no extensions and None for default)
-OUT_FONT_NAME = "Test"
+font.add_ligatures({
+    "0": "⁰",
+    "1": "¹",
+    "2": "²",
+    "3": "³",
+    "4": "⁴",
+    "5": "⁵",
+    "6": "⁶",
+    "7": "⁷",
+    "8": "⁸",
+    "9": "⁹"
+}, char_prefix="^")
+font.add_ligatures({
+    "0": "₀",
+    "1": "₁",
+    "2": "₂",
+    "3": "₃",
+    "4": "₄",
+    "5": "₅",
+    "6": "₆",
+    "7": "₇",
+    "8": "₈",
+    "9": "₉"
+}, char_prefix="_")
 
-# Font to add new symbols from (ordered by priority)
-FONTS = OrderedDict()
-FONTS["Droid Sans Mono"] = "DroidSansMono.ttf"
-FONTS["Fira Code"] = "FiraCode-Regular.ttf"
-FONTS["Latin Modern"] = "LatinModernMath.otf"
-FONTS["DejaVu Bold"] = "DejaVuSansMono-Bold.ttf"
-FONTS["DejaVu Italic"] = "DejaVuSansMono-Italic.ttf"
+# custom bold greek \balpha, \bbeta, ... (exclude eta since b + eta = beta)
+font.add_macros(
+    {k: v for k, v in greek_map.items() if not k == "eta"},
+    macro_prefix="b",
+    repl_prefix="b",
+    fonts=["DejaVu_Bold"]
+)
 
-# Alias for commands ( Not default behaviour only e.g. \renewcommand\cal[1]{{\mathcal{#1}}} )
-#mathbb.macros["bb"] = mathbb.macros["mathbb"]
-mathcal.macros["cal"] = mathcal.macros["mathcal"]
-mathfrak.macros["frak"] = mathfrak.macros["mathfrak"]
-
-
-sup_sub_ligs = Ligatures("ligature", fonts=["Fira Code"])
-sup_sub_ligs.ligatures.update({
-    "^0": "⁰",
-    "^1": "¹",
-    "^2": "²",
-    "^3": "³",
-    "^4": "⁴",
-    "^5": "⁵",
-    "^6": "⁶",
-    "^7": "⁷",
-    "^8": "⁸",
-    "^9": "⁹",
-    "_0": "₀",
-    "_1": "₁",
-    "_2": "₂",
-    "_3": "₃",
-    "_4": "₄",
-    "_5": "₅",
-    "_6": "₆",
-    "_7": "₇",
-    "_8": "₈",
-    "_9": "₉"
-})
-
-
-
-# Bold greek
-custom_b_greek = Macros(type="macro", fonts=["DejaVu Bold"])
-for k in list(greek.macros.keys()):
-    if k == "eta":
-        continue
-    custom_b_greek.macros["b"+k] = "b"+chr(ord(greek.macros[k]))
-
-# The ligatures to add to the font
-LIGATURES: "list[Union[Macros, Ligatures]]" = [
-    greek,
-    operators,
-    misc,
-    mathbb,
-    shorthand_NZQRC,
-    mathcal,
-    mathfrak,
-    map_arrows,
-    custom_b_greek,
-    sup_sub_ligs
-]
-
-COPYRIGHT = '\nProgramming ligatures added by Ilya Skriblovsky from FiraCode\nFiraCode Copyright (c) 2015 by Nikita Prokopov'
+font.save(
+    camel_name="Test",
+    add_copyright="Programming ligatures added by Ilya Skriblovsky from FiraCode\nFiraCode Copyright (c) 2015 by Nikita Prokopov"
+)

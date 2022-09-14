@@ -1,1 +1,0 @@
-Enter the source font filename (including extension): Enter a name for your ligaturized font -- or press ENTER to use the same name: 
