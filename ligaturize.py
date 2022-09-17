@@ -3,7 +3,8 @@ from collections import OrderedDict
 import fontforge
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
 
 def name_from_codepoint(font, unicode_str):
     unicode = ord(unicode_str)
@@ -19,8 +20,10 @@ def name_from_codepoint(font, unicode_str):
     return alt_match
 
 
-def find_unicode_glyph(font, unicode_char) -> Optional[str]:
-    """ takes Single character string """
+def find_unicode_glyph(font, unicode_char: str) -> Optional[str]:
+    """ Find a unicode glyph inside a font. The passed character should be a single character unicode string. """
+    if len(unicode_char) != 1:
+        raise Exception(f"`{unicode_char}` is not length 1")
     unicode = ord(unicode_char)
     alt_match = None
     for glyph_name in font:
@@ -60,16 +63,20 @@ def change_font_names(font, fontname, fullname, familyname, copyright_add, uniqu
         for row in font.sfnt_names
     )
 
+Glyph_Format = Literal["unicode", "advanced"]
 
 class _EditorBackend:
-    def __init__(self, font, other_fonts):
+    def __init__(self, font: Any, other_fonts: Dict[str, Any]):
+        """
+        other_fonts: { FONT_NAME: FONT }
+        """
         self.font = font
         self.source_fonts: dict[str, Any] = other_fonts
 
         """
         Dict mapping glyphs to their names.
         Use `useable_glyphs[FONT_NAME][FORMAT][GLYPH]` where `FORMAT` is "unicode" or "name"
-        and `GLYPH` is single character unicode string or the glyph name.
+        and `GLYPH` is single character unicode string or the glyph name inside the font.
         """
         self.useable_glyphs: dict[str,
                                   dict[Literal["unicode", "name"], dict[str, str]]] = {}
@@ -89,8 +96,7 @@ class _EditorBackend:
         # Special glyph names
         self.SPACE = self.useable_glyphs["Default"]["unicode"][" "]
         self.BACKSLASH = self.useable_glyphs["Default"]["unicode"]["\\"]
-        self.NO_BREAK_SPACE = self.useable_glyphs["Default"]["unicode"][chr(
-            160)]
+        self.NO_BREAK_SPACE = self.useable_glyphs["Default"]["unicode"][chr(160)]
         self.CURL_OPEN = self.useable_glyphs["Default"]["unicode"]["{"]
         self.CURL_CLOSE = self.useable_glyphs["Default"]["unicode"]["}"]
         # Macros
@@ -111,9 +117,19 @@ class _EditorBackend:
         self.font.paste()
 
     def use_glyph(self, glyph: str, *, fonts: Optional[List[str]] = None, format: Literal["unicode", "name"] = "unicode"):
+        """
+        Use the `glyph` from the first matching font in the list of `fonts`. The glyph is added if nessesary.
+
+        Keyword arguments:
+
+        fonts -- A list of fontnames as specified in `other_fonts` in the constructor or "Default" for the main font.
+            Defaults to ["Default", ...other_fonts] with the given order of other fonts (when passed as OrderedDict).
+
+        format -- The format in which the glyph is given (either single char unicode or glyph name in the font).
+        """
         if fonts is None:
             fonts = ["Default"] + list(self.source_fonts.keys())
-        
+
         for font_name in fonts:
             if font_name in self.useable_glyphs and glyph in self.useable_glyphs[font_name][format]:
                 return self.useable_glyphs[font_name][format][glyph]
@@ -148,8 +164,16 @@ class _EditorBackend:
 
     def use_glyph_format(self, glyphs: str, *, fonts: Optional[List[str]] = None, format: Literal["unicode", "advanced"] = "unicode") -> List[str]:
         """
-        unicode: parses the string of unicode characters directly.
-        advanced: pass glyphs as space separated glyph names. One may specify a font per glyph directly usign "GLYPH_NAME@FONT_NAME".
+        Parses glyphs into a sequence of character names. All glyphs are added if nessesary.
+
+
+        Keyword arguments:
+        fonts: The order of prefered fonts or None to default to `["Default", ...other_fonts]` as given in the constructor.
+        format:
+            "unicode": Parses the glyphs as unicode characters as is.
+            "advanced": Parses the glyphs as space separated values.
+                Each value is either the glyph name or has the format `GLYPH_NAME*FONT_NAME`,
+                if the symbol should come from a specific font.
         """
         glyph_list = []
 
@@ -159,6 +183,8 @@ class _EditorBackend:
         elif format == "advanced":
             name_list = glyphs.split(" ")
             for glyph_name in name_list:
+                if glyph_name == "":
+                    continue
                 split_name = glyph_name.split("*", maxsplit=1)
                 # add glyph from default fonts. else use the font specified after *
                 if len(split_name) == 1:
@@ -182,6 +208,21 @@ class _EditorBackend:
         lookup_feature=(),
         lookup_after=None
     ):
+        """
+        Add a copntextual ligature to the font.
+        
+        Arguments:
+        char_in -- The characters to be replaced.
+        char_out -- The characters to replace with.
+
+        Keyword Arguments:
+        look_back: The characters that should appear before the `char_in` sequence.
+        look_ahead: The characters that should appear after the `char_in` sequence.
+
+        lookup_name: The lookup_name of the contextual lookup
+        lookup_after: The name of the lookup after which this one executes. Defaults to highest priority.
+        lookup_feature: The feature of the lookup.
+        """
         if (len(char_in) < len(char_out)):
             raise Exception("Can only replace by shorter sequence")
         if not hasattr(self, "_lookup_count"):
@@ -233,6 +274,7 @@ class _EditorBackend:
 
     ## MACROS ##
     def macro_glyph_name(self, length: "int"):
+        """ Glyph that indicates the start of a macro of given length for contextual lookups. """
         return f"macro.{length}.liga"
 
     # The heavy lifting for macros is done here
@@ -281,22 +323,21 @@ class _EditorBackend:
 
         self._max_macro_len = max_len
 
-    def add_macro(self, macro: "str", replacement: "str", *, fonts: Optional[List[str]] = None, repl_format: Literal['unicode', 'advanced'] = "unicode"):
+    def add_macro(self, macro: "str", replacement: List[str]):
         self.lookup_macros(len(macro))
 
         input_chars = [self.macro_glyph_name(
             len(macro))] + self.use_glyph_format(macro, format="unicode")
-        output_chars = [self.BACKSLASH] + self.use_glyph_format(replacement, fonts=fonts, format=repl_format)
 
         self.add_advanced_ligature(
             input_chars,
-            output_chars,
+            replacement,
             lookup_feature=self.feature,
             lookup_after=self.macro_length_lookup
         )
 
-    def add_macro_font(self, macro: "str", map: "dict[str,str]", *, fonts=None, repl_format: Literal['unicode', 'advanced'] = "unicode"):
-        """ For macros of the form `\mathbb N` or `\mathbb{N}` """
+    def add_macro_font(self, macro: str, map: Dict[str, List[str]]):
+        """ For macros of the form `\\mathbb N` or `\\mathbb{N}` """
         self.lookup_macros(len(macro))
 
         macro_glyph = self.macro_glyph_name(len(macro))
@@ -305,22 +346,19 @@ class _EditorBackend:
 
             char_in = [macro_glyph] + \
                 self.use_glyph_format(macro, fonts=["Default"])
-            char_out = [self.BACKSLASH] + \
-                self.use_glyph_format(
-                    replacement, fonts=fonts, format=repl_format)
 
             arg_glyph: str = self.use_glyph(character, fonts=["Default"])
 
             # without { }
             self.add_advanced_ligature(
                 char_in+[self.SPACE, arg_glyph],
-                char_out,
+                replacement,
                 lookup_feature=self.feature,
                 lookup_after=self.macro_length_lookup
             )
             self.add_advanced_ligature(
                 char_in+[self.NO_BREAK_SPACE, arg_glyph],
-                char_out,
+                replacement,
                 lookup_feature=self.feature,
                 lookup_after=self.macro_length_lookup
             )
@@ -328,16 +366,15 @@ class _EditorBackend:
             # with { }
             self.add_advanced_ligature(
                 char_in+[self.CURL_OPEN, arg_glyph, self.CURL_CLOSE],
-                char_out,
+                replacement,
                 lookup_feature=self.feature,
                 lookup_after=self.macro_length_lookup
             )
 
-
-Glyph_Format = Literal["unicode", "advanced"]
+Fonts = Optional[List[str]]
 
 class EditFont:
-    def __init__(self, font: str, *, other_fonts: Dict[str, str] = {}, in_folder: str="input_files", out_folder: str="output_files"):
+    def __init__(self, font: str, *, other_fonts: Dict[str, str] = {}, in_folder: str = "input_files", out_folder: str = "output_files"):
         self.in_folder = Path(in_folder)
         self.out_folder = Path(out_folder)
 
@@ -345,73 +382,146 @@ class EditFont:
         _other_fonts = OrderedDict()
         for k, v in other_fonts.items():
             _other_fonts[k] = fontforge.open((self.in_folder / v).as_posix())
+            _other_fonts[k].em = self.font.em
 
         self.backend = _EditorBackend(self.font, _other_fonts)
-        
 
     def add_ligature(
-            self, characters: str, ligature: str, *,
-            fonts: Optional[List[str]] = None,
-            char_format: Glyph_Format = "unicode",
-            repl_format: Glyph_Format = "unicode"
-        ):
+        self, characters: str, ligature: str, *,
+        fonts: Optional[List[str]] = None,
+        char_format: Glyph_Format = "unicode",
+        repl_format: Glyph_Format = "unicode"
+    ):
+        """
+        Add a Ligature to the font.
+        """
         self.backend.add_advanced_ligature(
-            self.backend.use_glyph_format(characters, fonts=["Default"], format=char_format),
-            self.backend.use_glyph_format(ligature, fonts=fonts, format=repl_format),
+            self.backend.use_glyph_format(
+                characters, fonts=["Default"], format=char_format),
+            self.backend.use_glyph_format(
+                ligature, fonts=fonts, format=repl_format),
             lookup_feature=self.backend.feature
         )
 
     def add_ligatures(
-            self, ligatures: dict, *,
-            char_prefix="",
-            char_suffix="",
-            lig_prefix="",
-            lig_suffix="",
-            fonts: Optional[List[str]] = None,
-            char_format: Glyph_Format = "unicode",
-            repl_format: Glyph_Format = "unicode"
-        ):
+        self, ligatures: dict, *,
+        char_prefix="",
+        char_suffix="",
+        lig_prefix="",
+        lig_suffix="",
+        fonts: Optional[List[str]] = None,
+        char_format: Glyph_Format = "unicode",
+        repl_format: Glyph_Format = "unicode"
+    ):
         for characters, ligature in ligatures.items():
-            self.add_ligature(char_prefix + characters + char_suffix, lig_prefix + ligature + lig_suffix, fonts=fonts, char_format=char_format, repl_format=repl_format)
+            self.add_ligature(char_prefix + characters + char_suffix, lig_prefix + ligature +
+                              lig_suffix, fonts=fonts, char_format=char_format, repl_format=repl_format)
 
-    def add_macro(self, macro: str, replacement: str, *, fonts: Optional[List[str]] = None, repl_format: Glyph_Format="unicode"):
-        self.backend.add_macro(macro, replacement, fonts=fonts, repl_format=repl_format)
+    def add_macro(self, macro: str, replacement: str, *, fonts: Optional[List[str]] = None, repl_format: Glyph_Format = "unicode"):
+        """
+        Add a single new macro. This is a short form for `add_macros({macro: replacement}, fonts=fonts, repl_format=repl_format)`.
+        """
+        self.add_macros({macro: replacement}, fonts=fonts, repl_format=repl_format)
 
-    def add_macros(self, macros: dict, *, macro_prefix="", macro_suffix="", repl_prefix="", repl_suffix="", fonts: Optional[List[str]] = None, repl_format: Glyph_Format="unicode"):
+    def add_macros(
+        self,
+        macros: Dict[str,str], *,
+        macro_prefix="",
+        macro_suffix="",
+        repl_prefix="",
+        repl_suffix="",
+        fonts: Union[Fonts, Tuple[Fonts,Fonts,Fonts]] = None,
+        repl_format: Union[Glyph_Format, Tuple[Glyph_Format,Glyph_Format,Glyph_Format]] = "unicode"
+    ):
+        """
+        Add multiple macros to the font. The macros are passed as dictionary entries `{ macro: replacement }`.
+        The actual added macro is `macro_prefix + macro + macro_suffix` and is replaced by `repl_prefix + replacement + repl_suffix`.
+        Each part of the replacement can specify its own format using the keyword argument `repl_format`.
+
+        Keyword Arguments:
+            fonts -- Either None (default), a **List** of font names or a **touple** of lists of fonts names (for prefix, replacement, suffix)
+            repl_format -- The format used. When passed as tuple different formats for `(prefix_fmt, replacement_fmt, suffix_fmt)`.
+        
+        Formatting: The glyph format is either "unicode" or "advanced".
+            "unicode" -- A string is parsed as the given characters. 
+            "advanced" -- A string is parsed as space separated glyph names.
+                Each glyph can specify its own font using `GLYPH_NAME*FONT_NAME`.
+                The font names are specified in the constructor.
+            ( Example: `glyphs = "a*Default b*Bold c*Italic"` with `{"Bold": ..., "Italic": ...}` passed as `other_fonts` in the constructor. )
+        """
+        # Make everything tuple
+        if not isinstance(repl_format, Tuple):
+            repl_format = (repl_format, repl_format, repl_format)
+        if not isinstance(fonts, Tuple):
+            fonts = (fonts,fonts,fonts)
+        
+        repl_prefix_glyps = self.backend.use_glyph_format(repl_prefix, fonts=fonts[0], format=repl_format[0])
+        repl_suffix_glyphs = self.backend.use_glyph_format(repl_suffix, fonts=fonts[2], format=repl_format[2])
+
         for macro, replacement in macros.items():
-            self.add_macro(
+            repl_glyphs = self.backend.use_glyph_format(replacement, fonts=fonts[1], format=repl_format[1])
+
+            self.backend.add_macro(
                 macro_prefix + macro + macro_suffix,
-                repl_prefix+replacement+repl_suffix,
-                fonts=fonts,
-                repl_format=repl_format
+                repl_prefix_glyps+repl_glyphs+repl_suffix_glyphs
             )
 
-    def add_macro_font(self, macro: str, map: dict, *, repl_prefix="", repl_suffix="", repl_format: Glyph_Format="unicode", fonts: Optional[List[str]] = None):
+    def add_macro_font(
+            self, 
+            macro: str, 
+            map: Dict[str,str], *, 
+            repl_prefix="", 
+            repl_suffix="", 
+            repl_format: Union[Glyph_Format, Tuple[Glyph_Format,Glyph_Format,Glyph_Format]] = "unicode",
+            fonts: Union[Fonts, Tuple[Fonts,Fonts,Fonts]] = None
+        ):
+        """
+        Adds a single macro that accepts a single argument. Examples for this would be `\\mathbb` or `\\mathcal`.
+        Both `\\macro{A}` and `\\macro A` are supported.
+        Each replacement is prefixed or suffixed as given in the keyword arguemnts.
+
+        map -- A dictionary if characters mapped to their replacement.
+
+        Keyword arguments: See `add_macros(...)`.
+        """
+        # Make everything tuple
+        if not isinstance(repl_format, Tuple):
+            repl_format = (repl_format, repl_format, repl_format)
+        if not isinstance(fonts, Tuple):
+            fonts = (fonts,fonts,fonts)
+        
+        repl_prefix_glyps = self.backend.use_glyph_format(repl_prefix, fonts=fonts[0], format=repl_format[0])
+        repl_suffix_glyphs = self.backend.use_glyph_format(repl_suffix, fonts=fonts[2], format=repl_format[2])
+
         parsed_map = {}
         for k, v in map.items():
-            parsed_map[k] = repl_prefix+v+repl_suffix
-        self.backend.add_macro_font(macro, parsed_map, fonts=fonts, repl_format=repl_format)
-    
-    def save(self, camel_name: str, *, file_name: Optional[str]=None, add_copyright: Optional[str]=None):
+            parsed_map[k] = repl_prefix_glyps+self.backend.use_glyph_format(v, fonts=fonts[1], format=repl_format[1])+repl_suffix_glyphs
+        self.backend.add_macro_font(macro, parsed_map)
+
+    def save(self, camel_name: str, *, file_name: Optional[str] = None, add_copyright: Optional[str] = None):
+        """
+        Save the font with new name `camel_case` into the file `camel_case+".ttf"` or inside `file_name` if specified.
+        """
         # Change font details
         name_with_space = split_camel_case(camel_name)
         if file_name is None:
             file_name = f"{camel_name}.ttf"
-        
+
         self.font.fontname = camel_name
         self.font.fullname = name_with_space
         self.font.familyname = name_with_space
         if add_copyright is not None:
             self.font.copyright += "\n"+add_copyright
         # change only the UniqueID in sfnt names
-        self.font.sfnt_names = tuple((row[0], 'UniqueID', name_with_space) if row[1] == 'UniqueID' else row for row in self.font.sfnt_names)
+        self.font.sfnt_names = tuple((row[0], 'UniqueID', name_with_space)
+                                     if row[1] == 'UniqueID' else row for row in self.font.sfnt_names)
 
         # Generate font & move to output directory
         output_full_path = self.out_folder / file_name
         self.font.generate(file_name)
         os.rename(file_name, output_full_path)
-        print(f"Generated ligaturized font {name_with_space} in {output_full_path.as_posix()}")
-        
+        print(
+            f"Generated ligaturized font {name_with_space} in {output_full_path.as_posix()}")
 
 
 LETTERS = tuple('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ')
